@@ -7,10 +7,65 @@
  * @author maspetsberger 
  */
 
+#include <Arduino.h>
 #include <driver/i2s.h>
+#include "arduinoFFT.h"
+
+// size of noise sample
+#define SAMPLES 1024
 
 const i2s_port_t I2S_PORT = I2S_NUM_0;
-const int BLOCK_SIZE = 1024;
+const int BLOCK_SIZE = SAMPLES;
+
+#define OCTAVES 9
+
+// our FFT data
+static float real[SAMPLES];
+static float imag[SAMPLES];
+static arduinoFFT fft(real, imag, SAMPLES, SAMPLES);
+static float energy[OCTAVES];
+
+static void print(const char *fmt, ...)
+{
+    // format it
+    char buf[256];
+    va_list args;
+    va_start(args, fmt);
+    vsnprintf(buf, sizeof(buf), fmt, args);
+    va_end(args);
+
+    // send it to serial
+    Serial.write(buf);
+}
+
+static void integerToFloat(int32_t * integer, float *vReal, float *vImag, uint16_t samples)
+{
+    for (uint16_t i = 0; i < samples; i++) {
+        vReal[i] = integer[i] / 65536;
+        vImag[i] = 0.0;
+    }
+}
+
+static void calculateEnergy(float *vReal, float *vImag, uint16_t samples)
+{
+    for (uint16_t i = 0; i < samples; i++) {
+        vReal[i] = sq(vReal[i]) + sq(vImag[i]);
+        vImag[i] = 0.0;
+    }
+}
+
+static void sumEnergy(const float *bins, float *energy, int bin_size, int num_octaves, float scale)
+{
+    int bin = 1;
+    for (int octave = 0; octave < num_octaves; octave++) {
+        float sum = 0.0;
+        for (int i = 0; i < bin_size; i++) {
+            sum += real[bin++];
+        }
+        energy[octave] = scale * log(sum);
+        bin_size *= 2;
+    }
+}
 
 void setup(void)
 {
@@ -21,8 +76,8 @@ void setup(void)
     // The I2S config as per the example
     const i2s_config_t i2s_config = {
         .mode = i2s_mode_t(I2S_MODE_MASTER | I2S_MODE_RX),      // Receive, not transfer
-        .sample_rate = 16000,   // 16KHz
-        .bits_per_sample = I2S_BITS_PER_SAMPLE_24BIT,
+        .sample_rate = 22627,
+        .bits_per_sample = I2S_BITS_PER_SAMPLE_32BIT,
         .channel_format = I2S_CHANNEL_FMT_ONLY_RIGHT,   // although the SEL config should be left, it seems to transmit on right
         .communication_format = i2s_comm_format_t(I2S_COMM_FORMAT_I2S | I2S_COMM_FORMAT_I2S_MSB),
         .intr_alloc_flags = ESP_INTR_FLAG_LEVEL1,       // Interrupt level 1
@@ -53,11 +108,12 @@ void setup(void)
     Serial.println("I2S driver installed.");
 }
 
+
 void loop(void)
 {
+    static int32_t samples[BLOCK_SIZE];
 
     // Read multiple samples at once and calculate the sound pressure
-    int32_t samples[BLOCK_SIZE];
     size_t num_bytes_read;
     esp_err_t err = i2s_read(I2S_PORT,
                              (char *) samples,
@@ -65,6 +121,27 @@ void loop(void)
                              &num_bytes_read,
                              portMAX_DELAY);    // no timeout
     int samples_read = num_bytes_read / 8;
+
+    // integer to float
+    integerToFloat(samples, real, imag, SAMPLES);
+
+    // apply flat top window, optimal for energy calculations
+    fft.Windowing(FFT_WIN_TYP_FLT_TOP, FFT_FORWARD);
+    fft.Compute(FFT_FORWARD);
+
+    // calculate energy in each bin
+    calculateEnergy(real, imag, SAMPLES);
+
+    // sum up energy in bin for each octave
+    sumEnergy(real, energy, 1, OCTAVES, 1.0);
+
+    // show energy
+    for (int i = 0; i < OCTAVES; i++) {
+        print(" %6.2f", energy[i]);
+    }
+    print("\n");
+
+#if 0
     if (samples_read > 0) {
         float mean = 0;
         int32_t val;
@@ -80,5 +157,5 @@ void loop(void)
         }
         Serial.println();
     }
+#endif
 }
-

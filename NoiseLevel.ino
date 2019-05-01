@@ -41,7 +41,7 @@ static void print(const char *fmt, ...)
 static void integerToFloat(int32_t * integer, float *vReal, float *vImag, uint16_t samples)
 {
     for (uint16_t i = 0; i < samples; i++) {
-        vReal[i] = integer[i] / 65536;
+        vReal[i] = (integer[i] >> 16) / 10.0;
         vImag[i] = 0.0;
     }
 }
@@ -56,7 +56,12 @@ static void calculateEnergy(float *vReal, float *vImag, uint16_t samples)
 
 static void sumEnergy(const float *bins, float *energy, int bin_size, int num_octaves, float scale)
 {
-    int bin = 1;
+    // skip the first bin
+    int bin = bin_size;
+
+    // ln -> log10
+    scale /= log(10);
+
     for (int octave = 0; octave < num_octaves; octave++) {
         float sum = 0.0;
         for (int i = 0; i < bin_size; i++) {
@@ -133,11 +138,11 @@ void loop(void)
     calculateEnergy(real, imag, SAMPLES);
 
     // sum up energy in bin for each octave
-    sumEnergy(real, energy, 1, OCTAVES, 1.0);
+    sumEnergy(real, energy, 1, OCTAVES, 10.0);
 
     // show energy
     for (int i = 0; i < OCTAVES; i++) {
-        print(" %6.2f", energy[i]);
+        print(" %6.1f", energy[i]);
     }
     print("\n");
 

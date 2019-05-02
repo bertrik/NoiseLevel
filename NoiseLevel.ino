@@ -87,7 +87,8 @@ void setup(void)
         .communication_format = i2s_comm_format_t(I2S_COMM_FORMAT_I2S | I2S_COMM_FORMAT_I2S_MSB),
         .intr_alloc_flags = ESP_INTR_FLAG_LEVEL1,       // Interrupt level 1
         .dma_buf_count = 8,     // number of buffers
-        .dma_buf_len = BLOCK_SIZE       // samples per buffer
+        .dma_buf_len = BLOCK_SIZE,      // samples per buffer
+        .use_apll = true
     };
 
     // The pin config as per the setup

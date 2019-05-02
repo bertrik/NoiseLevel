@@ -25,7 +25,7 @@ static float imag[SAMPLES];
 static arduinoFFT fft(real, imag, SAMPLES, SAMPLES);
 static float energy[OCTAVES];
 // A-weighting curve from 31.5 Hz ... 8000 Hz
-static const float aweighting[] = { -39.4, -26.2, -16.1, -8.6, -3.2, 0, 1.2, 1.0, -1.1 };
+static const float aweighting[] = { -39.4, -26.2, -16.1, -8.6, -3.2, 0.0, 1.2, 1.0, -1.1 };
 
 static void print(const char *fmt, ...)
 {
@@ -48,6 +48,7 @@ static void integerToFloat(int32_t * integer, float *vReal, float *vImag, uint16
     }
 }
 
+// calculates energy from Re and Im parts and places it back in the Re part (Im part is zeroed)
 static void calculateEnergy(float *vReal, float *vImag, uint16_t samples)
 {
     for (uint16_t i = 0; i < samples; i++) {
@@ -56,32 +57,36 @@ static void calculateEnergy(float *vReal, float *vImag, uint16_t samples)
     }
 }
 
-static void sumEnergy(const float *bins, float *energy, int bin_size, int num_octaves, float scale)
+// sums up energy in bins per octave
+static void sumEnergy(const float *bins, float *energies, int bin_size, int num_octaves)
 {
     // skip the first bin
     int bin = bin_size;
-
-    // ln -> log10
-    scale /= log(10);
-
     for (int octave = 0; octave < num_octaves; octave++) {
         float sum = 0.0;
         for (int i = 0; i < bin_size; i++) {
             sum += real[bin++];
         }
-        energy[octave] = scale * log(sum);
+        energies[octave] = sum;
         bin_size *= 2;
     }
 }
 
-static float calculateLoudness(const float *energy, const float *weights, int num_octaves)
+static float decibel(float v)
+{
+    return 10.0 * log(v) / log(10);
+}
+
+// converts energy to logaritmic, returns A-weighted sum
+static float calculateLoudness(float *energies, const float *weights, int num_octaves, float scale)
 {
     float sum = 0.0;
     for (int i = 0; i < num_octaves; i++) {
-        float f = pow(10, weights[i] / 10.0);
-        sum += energy[i] * f;
+        float energy = scale * energies[i];
+        sum += energy * pow(10, weights[i] / 10.0);
+        energies[i] = decibel(energy);
     }
-    return sum;
+    return decibel(sum);
 }
 
 void setup(void)
@@ -151,31 +156,15 @@ void loop(void)
     calculateEnergy(real, imag, SAMPLES);
 
     // sum up energy in bin for each octave
-    sumEnergy(real, energy, 1, OCTAVES, 10.0);
+    sumEnergy(real, energy, 1, OCTAVES);
 
-    // show energy
+    // calculate loudness per octave + A weighted loudness
+    float loudness = calculateLoudness(energy, aweighting, OCTAVES, 1.0);
+
+    // show loudness
     for (int i = 0; i < OCTAVES; i++) {
         print(" %6.1f", energy[i]);
     }
-    float loudness = calculateLoudness(energy, aweighting, OCTAVES);
     print(" => %6.1f", loudness);
     print("\n");
-
-#if 0
-    if (samples_read > 0) {
-        float mean = 0;
-        int32_t val;
-        for (int i = 0; i < samples_read; ++i) {
-            val = samples[i] / 256;
-            if (val < 0) {
-                val = -val;
-            }
-            mean += val;
-        }
-        for (float i = mean / samples_read; i >= 1024; i /= 1.5) {
-            Serial.print("#");
-        }
-        Serial.println();
-    }
-#endif
 }

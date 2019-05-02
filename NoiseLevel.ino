@@ -24,6 +24,8 @@ static float real[SAMPLES];
 static float imag[SAMPLES];
 static arduinoFFT fft(real, imag, SAMPLES, SAMPLES);
 static float energy[OCTAVES];
+// A-weighting curve from 31.5 Hz ... 8000 Hz
+static const float aweighting[] = { -39.4, -26.2, -16.1, -8.6, -3.2, 0, 1.2, 1.0, -1.1 };
 
 static void print(const char *fmt, ...)
 {
@@ -70,6 +72,16 @@ static void sumEnergy(const float *bins, float *energy, int bin_size, int num_oc
         energy[octave] = scale * log(sum);
         bin_size *= 2;
     }
+}
+
+static float calculateLoudness(const float *energy, const float *weights, int num_octaves)
+{
+    float sum = 0.0;
+    for (int i = 0; i < num_octaves; i++) {
+        float f = pow(10, weights[i] / 10.0);
+        sum += energy[i] * f;
+    }
+    return sum;
 }
 
 void setup(void)
@@ -145,6 +157,8 @@ void loop(void)
     for (int i = 0; i < OCTAVES; i++) {
         print(" %6.1f", energy[i]);
     }
+    float loudness = calculateLoudness(energy, aweighting, OCTAVES);
+    print(" => %6.1f", loudness);
     print("\n");
 
 #if 0

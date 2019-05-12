@@ -131,6 +131,22 @@ void setup(void)
     Serial.println("I2S driver installed.");
 }
 
+static void print_level(float energy)
+{
+//    static const unsigned char levels[] = {' ', 0xB0, 0xB1, 0xB2, 0xDB};
+    static const unsigned char levels[] = { ' ', '.', 'o', 'O', 'X' };
+
+    int index = (int) (energy / 8) - 1;
+    if (index < 0) {
+        index = 0;
+    }
+    if (index > 4) {
+        index = 4;
+    }
+    char c = levels[index];
+    print("%c%c%c", c, c, c);
+}
+
 
 void loop(void)
 {
@@ -163,7 +179,7 @@ void loop(void)
 
     // show loudness
     for (int i = 0; i < OCTAVES; i++) {
-        print(" %6.1f", energy[i]);
+        print_level(energy[i]);
     }
     print(" => %6.1f", loudness);
     print("\n");
